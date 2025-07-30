@@ -1,1 +1,1 @@
-# gonllm.github.io
+# gonllm.github.ioはゆなみなまわ
