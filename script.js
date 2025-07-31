@@ -1,104 +1,161 @@
-@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400&display=swap');
-
-:root {
-    --bg-color: #222831;
-    --display-bg-color: #2a323c;
-    --btn-bg-color: #393e46;
-    --btn-special-bg-color: #4f5660;
-    --btn-operator-bg-color: #00adb5;
-    --btn-equal-bg-color: #f9a826;
-    --text-color: #eeeeee;
+// PWA Service Worker登録
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js')
+            .then(registration => {
+                console.log('ServiceWorker registration successful with scope: ', registration.scope);
+            })
+            .catch(err => {
+                console.log('ServiceWorker registration failed: ', err);
+            });
+    });
 }
 
-*, *::before, *::after {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
+// 電卓ロジック
+class Calculator {
+    constructor(previousOperandTextElement, currentOperandTextElement) {
+        this.previousOperandTextElement = previousOperandTextElement;
+        this.currentOperandTextElement = currentOperandTextElement;
+        this.clear();
+    }
+
+    clear() {
+        this.currentOperand = '0';
+        this.previousOperand = '';
+        this.operation = undefined;
+        this.updateDisplay();
+    }
+
+    delete() {
+        if (this.currentOperand === '0') return;
+        this.currentOperand = this.currentOperand.toString().slice(0, -1);
+        if (this.currentOperand === '') {
+            this.currentOperand = '0';
+        }
+        this.updateDisplay();
+    }
+
+    appendNumber(number) {
+        if (number === '.' && this.currentOperand.includes('.')) return;
+        if (this.currentOperand === '0' && number !== '.') {
+            this.currentOperand = number.toString();
+        } else {
+            this.currentOperand = this.currentOperand.toString() + number.toString();
+        }
+    }
+
+    chooseOperation(operation) {
+        if (this.currentOperand === '' && this.previousOperand !== '') {
+            this.operation = operation;
+            this.updateDisplay();
+            return;
+        }
+        if (this.previousOperand !== '') {
+            this.compute();
+        }
+        this.operation = operation;
+        this.previousOperand = this.currentOperand;
+        this.currentOperand = '';
+    }
+
+    compute() {
+        let computation;
+        const prev = parseFloat(this.previousOperand);
+        const current = parseFloat(this.currentOperand);
+        if (isNaN(prev) || isNaN(current)) return;
+        switch (this.operation) {
+            case '+':
+                computation = prev + current;
+                break;
+            case '-':
+                computation = prev - current;
+                break;
+            case '×':
+                computation = prev * current;
+                break;
+            case '÷':
+                computation = prev / current;
+                break;
+            default:
+                return;
+        }
+        this.currentOperand = this.formatNumber(computation);
+        this.operation = undefined;
+        this.previousOperand = '';
+    }
+
+    handleSpecial(type) {
+        switch (type) {
+            case 'AC':
+                this.clear();
+                break;
+            case '+/-':
+                if (this.currentOperand === '0' || this.currentOperand === '') return;
+                this.currentOperand = (parseFloat(this.currentOperand) * -1).toString();
+                break;
+            case '%':
+                 if (this.currentOperand === '0' || this.currentOperand === '') return;
+                this.currentOperand = (parseFloat(this.currentOperand) / 100).toString();
+                break;
+        }
+    }
+
+    formatNumber(number) {
+        // 指数表記や長すぎる小数を防ぐ
+        if (Math.abs(number) > 1e12 || (Math.abs(number) < 1e-6 && Math.abs(number) > 0)) {
+            return number.toExponential(2);
+        }
+        return parseFloat(number.toPrecision(12)).toString();
+    }
+
+    getDisplayNumber(number) {
+        if (number === null || number === undefined) return '';
+        const stringNumber = number.toString();
+        const integerDigits = parseFloat(stringNumber.split('.')[0]);
+        const decimalDigits = stringNumber.split('.')[1];
+        let integerDisplay;
+        if (isNaN(integerDigits)) {
+            integerDisplay = '';
+        } else {
+            integerDisplay = integerDigits.toLocaleString('en', { maximumFractionDigits: 0 });
+        }
+        if (decimalDigits != null) {
+            return `${integerDisplay}.${decimalDigits}`;
+        } else {
+            return integerDisplay;
+        }
+    }
+
+    updateDisplay() {
+        this.currentOperandTextElement.innerText = this.getDisplayNumber(this.currentOperand);
+        if (this.operation != null) {
+            this.previousOperandTextElement.innerText = 
+                `${this.getDisplayNumber(this.previousOperand)} ${this.operation}`;
+        } else {
+            this.previousOperandTextElement.innerText = '';
+        }
+    }
 }
 
-body {
-    font-family: 'Roboto', sans-serif;
-    background-color: var(--bg-color);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 100vh;
-    -webkit-tap-highlight-color: transparent; /* スマホでのタップ時のハイライトを消す */
-}
+const previousOperandTextElement = document.querySelector('.previous-operand');
+const currentOperandTextElement = document.querySelector('.current-operand');
+const buttons = document.querySelectorAll('button');
 
-.calculator {
-    width: 100%;
-    max-width: 360px;
-    background-color: var(--display-bg-color);
-    border-radius: 20px;
-    overflow: hidden;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-    display: flex;
-    flex-direction: column;
-}
+const calculator = new Calculator(previousOperandTextElement, currentOperandTextElement);
 
-.display {
-    background-color: var(--display-bg-color);
-    color: var(--text-color);
-    padding: 30px 20px;
-    text-align: right;
-    min-height: 120px;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    word-wrap: break-word;
-    word-break: break-all;
-}
-
-.previous-operand {
-    font-size: 1.5rem;
-    color: rgba(238, 238, 238, 0.6);
-    height: 30px;
-}
-
-.current-operand {
-    font-size: 3rem;
-    font-weight: 400;
-}
-
-.buttons {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 1px;
-}
-
-button {
-    border: none;
-    background-color: var(--btn-bg-color);
-    color: var(--text-color);
-    font-size: 1.5rem;
-    font-weight: 300;
-    padding: 25px 0;
-    cursor: pointer;
-    transition: background-color 0.2s ease;
-}
-
-button:hover {
-    background-color: rgba(255, 255, 255, 0.1);
-}
-
-button:active {
-    background-color: rgba(255, 255, 255, 0.2);
-    transform: scale(0.98);
-}
-
-.btn-special {
-    background-color: var(--btn-special-bg-color);
-}
-
-.btn-operator {
-    background-color: var(--btn-operator-bg-color);
-}
-
-.btn-operator[data-value="="] {
-    background-color: var(--btn-equal-bg-color);
-}
-
-.btn-zero {
-    grid-column: span 2;
-}
+buttons.forEach(button => {
+    button.addEventListener('click', () => {
+        const value = button.innerText;
+        
+        if (!isNaN(parseFloat(value)) || value === '.') {
+            calculator.appendNumber(value);
+        } else if (['+', '-', '×', '÷'].includes(value)) {
+            calculator.chooseOperation(value);
+        } else if (value === '=') {
+            calculator.compute();
+        } else if (['AC', '+/-', '%'].includes(value)) {
+            calculator.handleSpecial(value);
+        }
+        calculator.updateDisplay();
+    });
+});
